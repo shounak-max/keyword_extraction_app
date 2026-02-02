@@ -8,17 +8,9 @@
         "maxLambdaSize": "50mb",
         "runtime": "python3.9"
       }
-    },
-    {
-      "src": "templates/**",
-      "use": "@vercel/static"
     }
   ],
   "routes": [
-    {
-      "src": "/static/(.*)",
-      "dest": "static/$1"
-    },
     {
       "src": "/(.*)",
       "dest": "api/index.py"
