@@ -15,29 +15,25 @@ try:
 except Exception as e:
     print(f"NLTK download warning: {e}")
 
-app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), '../templates'))
+# Get correct template path
+template_dir = os.path.join(os.path.dirname(__file__), '../templates')
+if not os.path.exists(template_dir):
+    os.makedirs(template_dir, exist_ok=True)
 
-# Try to load pickle files from parent directory
+app = Flask(__name__, template_folder=template_dir, static_folder=os.path.join(os.path.dirname(__file__), '../static'))
+
+# Load pickle files
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 cv = None
 tfidf_transformer = None
 feature_names = None
 
 try:
-    pkl_files = {
-        'cv': os.path.join(base_dir, 'count_vectorizer.pkl'),
-        'tfidf': os.path.join(base_dir, 'tfidf_transformer.pkl'),
-        'features': os.path.join(base_dir, 'feature_names.pkl')
-    }
-    
-    if os.path.exists(pkl_files['cv']):
-        cv = pickle.load(open(pkl_files['cv'], 'rb'))
-    if os.path.exists(pkl_files['tfidf']):
-        tfidf_transformer = pickle.load(open(pkl_files['tfidf'], 'rb'))
-    if os.path.exists(pkl_files['features']):
-        feature_names = pickle.load(open(pkl_files['features'], 'rb'))
-except Exception as e:
-    print(f"Pickle load error: {e}")
+    cv = pickle.load(open(os.path.join(base_dir, 'count_vectorizer.pkl'), 'rb'))
+    tfidf_transformer = pickle.load(open(os.path.join(base_dir, 'tfidf_transformer.pkl'), 'rb'))
+    feature_names = pickle.load(open(os.path.join(base_dir, 'feature_names.pkl'), 'rb'))
+except FileNotFoundError:
+    print("Warning: Pickle files not found")
 
 stop_words = set(stopwords.words('english'))
 new_stop_words = ["fig","figure","image","sample","using","show","result","large","also","one","two","three","four","five","seven","eight","nine"]
@@ -54,7 +50,6 @@ def preprocess_text(txt):
         txt = [lmtr.lemmatize(word) for word in txt]
         return " ".join(txt)
     except Exception as e:
-        print(f"Preprocess error: {e}")
         return txt
 
 def sort_coo(coo_matrix):
@@ -70,15 +65,12 @@ def extract_topn_from_vector(feature_names, sorted_items, topn=10):
 
 @app.route('/')
 def index():
-    try:
-        return render_template('index.html')
-    except Exception as e:
-        return f"Error loading index: {str(e)}", 500
+    return jsonify({"message": "Keyword Extraction API", "endpoints": ["/health", "/extract_keywords"]})
 
 @app.route('/extract_keywords', methods=['POST'])
 def extract_keywords():
     try:
-        if not cv or not tfidf_transformer or not feature_names:
+        if not all([cv, tfidf_transformer, feature_names]):
             return jsonify({"error": "Model files not loaded"}), 503
         
         document = request.files.get('file')
@@ -95,20 +87,16 @@ def extract_keywords():
         keywords = extract_topn_from_vector(feature_names, sort_coo(tf_idf.tocoo()), 20)
         return jsonify(keywords)
     except Exception as e:
-        print(f"Extract error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "ok", "models_loaded": all([cv, tfidf_transformer, feature_names])})
 
 @app.errorhandler(404)
 def not_found(e):
-    try:
-        return render_template('404.html'), 404
-    except:
-        return jsonify({"error": "Not found"}), 404
+    return jsonify({"error": "Not found"}), 404
 
 @app.errorhandler(500)
 def server_error(e):
-    return jsonify({"error": "Server error", "details": str(e)}), 500
+    return jsonify({"error": "Server error"}), 500
